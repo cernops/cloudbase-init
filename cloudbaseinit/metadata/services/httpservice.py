@@ -22,6 +22,7 @@ from six.moves.urllib import request
 
 from cloudbaseinit.metadata.services import base
 from cloudbaseinit.metadata.services import baseopenstackservice
+from _winreg import *
 from cloudbaseinit.openstack.common import log as logging
 from cloudbaseinit.utils import network
 
@@ -30,6 +31,8 @@ opts = [
                help='The base URL where the service looks for metadata'),
     cfg.BoolOpt('add_metadata_private_ip_route', default=True,
                 help='Add a route for the metadata ip address to the gateway'),
+    cfg.BoolOpt('kvp_injected_metadata_host', default=False,
+               help='Specify if the metadata host is injected through Hyper-V KVP'),
 ]
 
 CONF = cfg.CONF
@@ -48,15 +51,28 @@ class HttpService(baseopenstackservice.BaseOpenStackService):
     def load(self):
         super(HttpService, self).load()
         if CONF.add_metadata_private_ip_route:
-            network.check_metadata_ip_route(CONF.metadata_base_url)
+            network.check_metadata_ip_route(self._get_metadata_base_url())
 
         try:
             self._get_meta_data()
             return True
         except Exception:
             LOG.debug('Metadata not found at URL \'%s\'' %
-                      CONF.metadata_base_url)
+                      self._get_metadata_base_url())
             return False
+
+    def _get_metadata_base_url(self):
+        if CONF.kvp_injected_metadata_host:
+            try:
+                 aReg = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
+                 aKey = OpenKey(aReg, r"SOFTWARE\Microsoft\Virtual Machine\External", 0, (KEY_WOW64_64KEY + KEY_ALL_ACCESS))
+                 [injected_metadata_host, fieldSize] = QueryValueEx(aKey, "metadata_host")
+                 return 'http://%s:8775/' % (injected_metadata_host)
+            except Exception as ex:
+                 LOG.debug('Tried to load metadata host from KVP but failed, defaulting to metadata_base_url. ERROR')
+                 return CONF.metadata_base_url
+        else:
+            return CONF.metadata_base_url
 
     def _get_response(self, req):
         try:
@@ -68,14 +84,14 @@ class HttpService(baseopenstackservice.BaseOpenStackService):
                 raise
 
     def _get_data(self, path):
-        norm_path = posixpath.join(CONF.metadata_base_url, path)
+        norm_path = posixpath.join(self._get_metadata_base_url(), path)
         LOG.debug('Getting metadata from: %s', norm_path)
         req = request.Request(norm_path)
         response = self._get_response(req)
         return response.read()
 
     def _post_data(self, path, data):
-        norm_path = posixpath.join(CONF.metadata_base_url, path)
+        norm_path = posixpath.join(self._get_metadata_base_url(), path)
         LOG.debug('Posting metadata to: %s', norm_path)
         req = request.Request(norm_path, data=data)
         self._get_response(req)
