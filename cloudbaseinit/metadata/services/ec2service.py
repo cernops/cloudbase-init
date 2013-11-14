@@ -19,6 +19,7 @@ import urllib2
 from oslo.config import cfg
 
 from cloudbaseinit.metadata.services import base
+from _winreg import *
 from cloudbaseinit.openstack.common import log as logging
 from cloudbaseinit.utils import network
 
@@ -26,6 +27,8 @@ opts = [
     cfg.StrOpt('ec2_metadata_base_url',
                default='http://169.254.169.254/',
                help='The base URL where the service looks for metadata'),
+    cfg.BoolOpt('kvp_injected_metadata_host', default=False,
+               help='Specify if the metadata host is injected through Hyper-V KVP'),
 ]
 
 CONF = cfg.CONF
@@ -43,7 +46,7 @@ class EC2Service(base.BaseMetadataService):
 
     def load(self):
         super(EC2Service, self).load()
-        network.check_metadata_ip_route(CONF.ec2_metadata_base_url)
+        network.check_metadata_ip_route(self._get_ec2_metadata_base_url())
 
         try:
             self.get_host_name()
@@ -51,8 +54,21 @@ class EC2Service(base.BaseMetadataService):
         except Exception, ex:
             LOG.exception(ex)
             LOG.debug('Metadata not found at URL \'%s\'' %
-                      CONF.ec2_metadata_base_url)
+                      self._get_ec2_metadata_base_url())
             return False
+
+    def _get_ec2_metadata_base_url(self):
+        if CONF.kvp_injected_metadata_host:
+            try:
+                 aReg = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
+                 aKey = OpenKey(aReg, r"SOFTWARE\Microsoft\Virtual Machine\External", 0, (KEY_WOW64_64KEY + KEY_ALL_ACCESS))
+                 [injected_metadata_host, fieldSize] = QueryValueEx(aKey, "metadata_host")
+                 return 'http://%s:8775/2009-04-04/' % (injected_metadata_host)
+            except Exception as ex:
+                 LOG.debug('Tried to load metadata host from KVP but failed, defaulting to ec2_metadata_base_url. ERROR')
+                 return CONF.ec2_metadata_base_url
+        else:
+            return CONF.ec2_metadata_base_url
 
     def _get_response(self, req):
         try:
@@ -64,7 +80,7 @@ class EC2Service(base.BaseMetadataService):
                 raise
 
     def _get_data(self, path):
-        norm_path = posixpath.join(CONF.ec2_metadata_base_url, path)
+        norm_path = posixpath.join(self._get_ec2_metadata_base_url(), path)
 
         LOG.debug('Getting metadata from: %(norm_path)s',
                   {'norm_path': norm_path})
