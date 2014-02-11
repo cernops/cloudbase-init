@@ -19,6 +19,7 @@ import tempfile
 from cloudbaseinit.openstack.common import log as logging
 from cloudbaseinit.plugins.windows import fileexecutils
 from cloudbaseinit.plugins.windows.userdataplugins import base
+from cloudbaseinit.plugins.windows import userdatautils
 
 LOG = logging.getLogger(__name__)
 
