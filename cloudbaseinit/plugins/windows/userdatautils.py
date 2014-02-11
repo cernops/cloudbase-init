@@ -12,13 +12,24 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import ConfigParser
 import os
 import re
+import StringIO
 import tempfile
 import uuid
 
+from oslo.config import cfg
+
 from cloudbaseinit.openstack.common import log as logging
 from cloudbaseinit.osutils import factory as osutils_factory
+
+opts = [
+    cfg.StrOpt('cmf_service', help='CMF url pointing to the WSDL'),
+]
+
+CONF = cfg.CONF
+CONF.register_opts(opts)
 
 LOG = logging.getLogger(__name__)
 
@@ -41,6 +52,15 @@ def execute_user_data_script(user_data):
     elif re.search(r'^#!', user_data, re.I):
         target_path += '.sh'
         args = ['bash.exe', target_path]
+    elif re.search(r'^#cmf\s', user_data, re.I):
+        config = ConfigParser.ConfigParser()
+        config.readfp(StringIO.StringIO(user_data))
+        nsc_membership = config.get('NSC', 'Membership')
+        helper_ps1_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cmf_help.ps1')
+        args = ['powershell.exe', '-ExecutionPolicy', 'Unrestricted',
+                '-NonInteractive', '-Command',
+                ". '%s'; Add-ComputerToNsc -nsc_ids %s -cmf_service '%s'" % (helper_ps1_path, nsc_membership, CONF.cmf_service)]
+        shell = False
     elif re.search(r'^#(ps1|ps1_sysnative)\s', user_data, re.I):
         target_path += '.ps1'
         powershell = True

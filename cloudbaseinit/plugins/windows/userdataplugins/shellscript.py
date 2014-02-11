@@ -19,6 +19,7 @@ import os
 from cloudbaseinit.openstack.common import log as logging
 from cloudbaseinit.osutils import factory as osutils_factory
 from cloudbaseinit.plugins.windows.userdataplugins import base
+from cloudbaseinit.plugins.windows import userdatautils
 
 LOG = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ class ShellScriptPlugin(base.BaseUserDataPlugin):
         if file_name.endswith(".cmd"):
             args = [target_path]
             shell = True
+        if file_name.endswith(".cmf"):
+            return userdatautils.execute_user_data_script(part.get_payload())
         elif file_name.endswith(".sh"):
             args = ['bash.exe', target_path]
         elif file_name.endswith(".py"):
