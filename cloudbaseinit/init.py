@@ -98,13 +98,17 @@ class InitManager(object):
     def configure_host(self):
         osutils = osutils_factory.get_os_utils()
         osutils.wait_for_boot_completion()
+        service = None
+        instance_id = None
+        try:
+             service = metadata_factory.get_metadata_service()
+             LOG.info('Metadata service loaded: \'%s\'' %
+                      service.get_name())
 
-        service = metadata_factory.get_metadata_service()
-        LOG.info('Metadata service loaded: \'%s\'' %
-                 service.get_name())
-
-        instance_id = service.get_instance_id()
-        LOG.debug('Instance id: %s', instance_id)
+             instance_id = service.get_instance_id()
+             LOG.debug('Instance id: %s', instance_id)
+         except Exception as ex:
+             LOG.error('Metadata service not found. Plugins depending on it will fail')
 
         plugins = plugins_factory.load_plugins()
         plugins_shared_data = {}
