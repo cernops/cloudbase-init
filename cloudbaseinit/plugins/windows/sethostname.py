@@ -16,6 +16,7 @@
 
 import platform
 import re
+import socket
 
 from oslo.config import cfg
 
@@ -43,10 +44,13 @@ class SetHostNamePlugin(base.BasePlugin):
 
         metadata_host_name = service.get_host_name()
         if not metadata_host_name:
-            LOG.debug('Hostname not found in metadata')
-            return (base.PLUGIN_EXECUTION_DONE, False)
+            LOG.debug('Hostname not found in metadata, using DNS name.')
 
-        metadata_host_name = metadata_host_name.split('.', 1)[0]
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('cern.ch', 0))
+            metadata_host_name = socket.gethostbyaddr(s.getsockname()[0])
+        else:
+            metadata_host_name = metadata_host_name.split('.', 1)[0]
 
         if (len(metadata_host_name) > NETBIOS_HOST_NAME_MAX_LEN and
                 CONF.netbios_host_name_compatibility):
